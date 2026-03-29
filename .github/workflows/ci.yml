@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Setup project
+        run: npm run setup
+        env:
+          GEMINI_API_KEY: dummy
+          TELEGRAM_BOT_TOKEN: dummy
+          TELEGRAM_CHAT_ID: dummy
+
+      - name: Syntax check
+        run: node --check src/index.js src/db.js src/scheduler.js src/gemini.js src/telegram.js src/recurrence.js src/routes/tasks.js src/routes/health.js scripts/setup.js
