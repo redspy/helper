@@ -115,6 +115,14 @@ router.post('/tasks/:id/run', async (req, res) => {
   res.redirect('/')
 })
 
+// GET /tasks?view=archived — 지난 할 일 목록 조회 (JSON)
+router.get('/tasks', (req, res) => {
+  if (req.query.view === 'archived') {
+    return res.json(getArchivedTasks())
+  }
+  res.json(getActiveTasks())
+})
+
 // POST /tasks/:id/reschedule — 지난 할 일 재활성화
 router.post('/tasks/:id/reschedule', (req, res) => {
   const { scheduled_at } = req.body

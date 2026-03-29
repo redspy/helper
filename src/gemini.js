@@ -12,6 +12,22 @@ function getModel() {
   return client.getGenerativeModel({ model: 'gemini-1.5-flash' })
 }
 
+const REQUIRED_SECTIONS = ['## 핵심 요약', '## 우선순위', '## 지금 바로 할 첫 행동']
+
+function validateResponse(text) {
+  if (!text || text.trim() === '') throw new Error('Gemini 응답이 비어있습니다.')
+  const missing = REQUIRED_SECTIONS.filter(s => !text.includes(s))
+  if (missing.length > 0) throw new Error(`Gemini 응답 형식 오류 — 누락된 섹션: ${missing.join(', ')}`)
+}
+
+async function callGemini(model, prompt) {
+  const timeoutPromise = new Promise((_, reject) =>
+    setTimeout(() => reject(new Error('Gemini API 타임아웃 (30초)')), 30000)
+  )
+  const result = await Promise.race([model.generateContent(prompt), timeoutPromise])
+  return result.response.text()
+}
+
 async function summarize(title, content) {
   const prompt = `당신은 생산성 코치입니다. 아래 할 일을 분석해 주세요.
 
@@ -34,18 +50,21 @@ ${content}
 3.`
 
   const model = getModel()
+  let lastError
 
-  const resultPromise = model.generateContent(prompt)
-  const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('Gemini API 타임아웃 (30초)')), 30000)
-  )
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    try {
+      const text = await callGemini(model, prompt)
+      validateResponse(text)
+      return text.trim()
+    } catch (err) {
+      lastError = err
+      console.error(`[gemini] 시도 ${attempt}/3 실패: ${err.message}`)
+      if (attempt < 3) await new Promise(r => setTimeout(r, 1000))
+    }
+  }
 
-  const result = await Promise.race([resultPromise, timeoutPromise])
-  const text = result.response.text()
-
-  if (!text || text.trim() === '') throw new Error('Gemini 응답이 비어있습니다.')
-
-  return text.trim()
+  throw lastError
 }
 
 module.exports = { summarize }
