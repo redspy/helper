@@ -48,19 +48,22 @@ Write-Host "[deploy] .env copied"
 
 Set-Location $appDir
 
-# Install dependencies only if node_modules is missing
-# Run manually on first deploy: cd $appDir && npm install
-$nodeModules = Join-Path $appDir "node_modules"
-if (-not (Test-Path $nodeModules)) {
-  Write-Host "[deploy] ERROR: node_modules not found."
-  Write-Host "[deploy] Run this once on the server to install dependencies:"
-  Write-Host ""
-  Write-Host "    cd `"$appDir`""
-  Write-Host "    npm install"
-  Write-Host ""
-  exit 1
+# Install dependencies when package.json changed or node_modules missing
+$nodeModules  = Join-Path $appDir "node_modules"
+$pkgJson      = Join-Path $appDir "package.json"
+$hashFile     = Join-Path $appDir ".pkg-hash"
+$currentHash  = (Get-FileHash $pkgJson -Algorithm MD5).Hash
+$previousHash = if (Test-Path $hashFile) { Get-Content $hashFile -Raw } else { "" }
+
+if (-not (Test-Path $nodeModules) -or $currentHash.Trim() -ne $previousHash.Trim()) {
+  Write-Host "[deploy] Installing dependencies..."
+  $env:NODE_OPTIONS = "--max-old-space-size=4096"
+  Invoke-Native { npm install --prefer-offline }
+  Set-Content $hashFile $currentHash
+  Write-Host "[deploy] Dependencies installed"
+} else {
+  Write-Host "[deploy] node_modules up to date - skipping install"
 }
-Write-Host "[deploy] node_modules found - skipping install"
 
 # Init DB (idempotent)
 Invoke-Native { npm run setup }
