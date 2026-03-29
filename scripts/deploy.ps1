@@ -1,3 +1,8 @@
+# UTF-8 출력 설정
+$OutputEncoding = [System.Text.Encoding]::UTF8
+[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
+chcp 65001 | Out-Null
+
 $ErrorActionPreference = "Stop"
 
 # 네이티브 커맨드(npm, pm2 등) 실패 시 즉시 중단
