@@ -1,0 +1,15 @@
+<%
+const recurrenceLabel = { once: '1회', daily: '매일', weekly: '매주', monthly: '매월', custom: '커스텀' }
+%>
+<tr>
+  <td><strong><%= task.title %></strong></td>
+  <td><%= task.scheduled_at %></td>
+  <td><%= task.archived_at || '-' %></td>
+  <td><%= recurrenceLabel[task.recurrence_type] || task.recurrence_type %></td>
+  <td>
+    <button class="btn btn-sm btn-reschedule" onclick="openRescheduleModal(<%= task.id %>, '<%= task.title.replace(/'/g, "\\'") %>')">다시 수행</button>
+    <form method="POST" action="/tasks/<%= task.id %>/delete" style="display:inline" onsubmit="return confirm('삭제하시겠습니까?')">
+      <button type="submit" class="btn btn-sm btn-delete">삭제</button>
+    </form>
+  </td>
+</tr>

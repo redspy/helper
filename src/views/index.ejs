@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>할 일 자동화</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
+    .container { max-width: 1100px; margin: 0 auto; padding: 24px 16px; }
+    h1 { font-size: 1.6rem; margin-bottom: 24px; }
+    h2 { font-size: 1.1rem; margin-bottom: 12px; color: #555; }
+
+    /* 카드 */
+    .card { background: #fff; border-radius: 8px; padding: 20px; margin-bottom: 24px; box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+
+    /* 폼 */
+    .form-row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 12px; }
+    .form-group { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 180px; }
+    .form-group label { font-size: .8rem; font-weight: 600; color: #666; }
+    .form-group input, .form-group select, .form-group textarea {
+      padding: 8px 10px; border: 1px solid #ddd; border-radius: 6px; font-size: .9rem;
+    }
+    .form-group textarea { resize: vertical; min-height: 80px; }
+    #custom-rule-group { display: none; }
+
+    /* 버튼 */
+    .btn { padding: 8px 14px; border: none; border-radius: 6px; cursor: pointer; font-size: .85rem; font-weight: 600; }
+    .btn-primary { background: #4f46e5; color: #fff; }
+    .btn-primary:hover { background: #4338ca; }
+    .btn-sm { padding: 4px 10px; font-size: .8rem; }
+    .btn-edit { background: #e0e7ff; color: #4f46e5; }
+    .btn-delete { background: #fee2e2; color: #dc2626; }
+    .btn-run { background: #d1fae5; color: #059669; }
+    .btn-run:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-reschedule { background: #fef3c7; color: #d97706; }
+    .btn-cancel { background: #f3f4f6; color: #374151; }
+
+    /* 테이블 */
+    table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    th { text-align: left; padding: 8px 10px; background: #f9fafb; border-bottom: 2px solid #e5e7eb; font-size: .8rem; color: #6b7280; }
+    td { padding: 10px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+    tr:last-child td { border-bottom: none; }
+    .actions { white-space: nowrap; display: flex; gap: 6px; align-items: center; }
+
+    /* 상태 뱃지 */
+    .status { padding: 2px 8px; border-radius: 999px; font-size: .75rem; font-weight: 600; }
+    .status-pending { background: #f3f4f6; color: #6b7280; }
+    .status-running { background: #dbeafe; color: #1d4ed8; }
+    .status-sent    { background: #d1fae5; color: #065f46; }
+    .status-failed  { background: #fee2e2; color: #991b1b; }
+
+    .error-text { color: #dc2626; font-size: .78rem; }
+    .error-banner { background: #fee2e2; color: #991b1b; padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; }
+
+    /* 지난 할 일 */
+    details summary { cursor: pointer; font-size: 1rem; font-weight: 600; color: #6b7280; padding: 4px 0; user-select: none; }
+    details summary:hover { color: #374151; }
+
+    /* 모달 */
+    .modal-backdrop { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.4); z-index: 100; align-items: center; justify-content: center; }
+    .modal-backdrop.open { display: flex; }
+    .modal { background: #fff; border-radius: 10px; padding: 24px; width: 100%; max-width: 480px; box-shadow: 0 8px 30px rgba(0,0,0,.15); }
+    .modal h3 { margin-bottom: 16px; font-size: 1rem; }
+    .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 16px; }
+  </style>
+</head>
+<body>
+<div class="container">
+  <h1>📋 할 일 자동화</h1>
+
+  <% if (error) { %>
+    <div class="error-banner"><%= error %></div>
+  <% } %>
+
+  <!-- 등록 폼 -->
+  <div class="card">
+    <h2>새 할 일 등록</h2>
+    <form method="POST" action="/tasks">
+      <div class="form-row">
+        <div class="form-group" style="flex:2; min-width:200px;">
+          <label>제목 *</label>
+          <input type="text" name="title" required placeholder="할 일 제목">
+        </div>
+        <div class="form-group">
+          <label>예정 시간 *</label>
+          <input type="datetime-local" name="scheduled_at" required>
+        </div>
+        <div class="form-group">
+          <label>반복 주기 *</label>
+          <select name="recurrence_type" id="recurrence_type">
+            <option value="once">1회</option>
+            <option value="daily">매일</option>
+            <option value="weekly">매주</option>
+            <option value="monthly">매월</option>
+            <option value="custom">커스텀</option>
+          </select>
+        </div>
+        <div class="form-group" id="custom-rule-group">
+          <label>커스텀 규칙 (cron)</label>
+          <input type="text" name="recurrence_rule" placeholder="예: 0 9 * * 1-5">
+        </div>
+      </div>
+      <div class="form-row">
+        <div class="form-group" style="flex:1; min-width:100%;">
+          <label>내용 *</label>
+          <textarea name="content" required placeholder="처리할 내용을 입력하세요"></textarea>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary">등록</button>
+    </form>
+  </div>
+
+  <!-- 활성 할 일 목록 -->
+  <div class="card">
+    <h2>할 일 목록</h2>
+    <% if (tasks.length === 0) { %>
+      <p style="color:#9ca3af; font-size:.9rem;">등록된 할 일이 없습니다.</p>
+    <% } else { %>
+      <table>
+        <thead>
+          <tr>
+            <th>제목</th>
+            <th>예정 시간</th>
+            <th>반복</th>
+            <th>상태</th>
+            <th>마지막 실행</th>
+            <th>작업</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% tasks.forEach(task => { %>
+            <%- include('partials/task-row', { task }) %>
+          <% }) %>
+        </tbody>
+      </table>
+    <% } %>
+  </div>
+
+  <!-- 지난 할 일 -->
+  <div class="card">
+    <details>
+      <summary>지난 할 일 (<%= archived.length %>건)</summary>
+      <div style="margin-top:16px;">
+        <% if (archived.length === 0) { %>
+          <p style="color:#9ca3af; font-size:.9rem;">지난 할 일이 없습니다.</p>
+        <% } else { %>
+          <table>
+            <thead>
+              <tr>
+                <th>제목</th>
+                <th>예정 시간</th>
+                <th>완료 시간</th>
+                <th>반복</th>
+                <th>작업</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% archived.forEach(task => { %>
+                <%- include('partials/archive-row', { task }) %>
+              <% }) %>
+            </tbody>
+          </table>
+        <% } %>
+      </div>
+    </details>
+  </div>
+</div>
+
+<!-- 수정 모달 -->
+<div class="modal-backdrop" id="edit-modal">
+  <div class="modal">
+    <h3>할 일 수정</h3>
+    <form method="POST" id="edit-form">
+      <div class="form-group" style="margin-bottom:10px;">
+        <label>제목</label>
+        <input type="text" name="title" id="edit-title" required>
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label>예정 시간</label>
+        <input type="datetime-local" name="scheduled_at" id="edit-scheduled_at" required>
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label>반복 주기</label>
+        <select name="recurrence_type" id="edit-recurrence_type">
+          <option value="once">1회</option>
+          <option value="daily">매일</option>
+          <option value="weekly">매주</option>
+          <option value="monthly">매월</option>
+          <option value="custom">커스텀</option>
+        </select>
+      </div>
+      <div class="form-group" id="edit-custom-rule-group" style="margin-bottom:10px; display:none;">
+        <label>커스텀 규칙 (cron)</label>
+        <input type="text" name="recurrence_rule" id="edit-recurrence_rule">
+      </div>
+      <div class="form-group" style="margin-bottom:10px;">
+        <label>내용</label>
+        <textarea name="content" id="edit-content" required></textarea>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-cancel" onclick="closeEditModal()">취소</button>
+        <button type="submit" class="btn btn-primary">저장</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- 다시 수행 모달 -->
+<div class="modal-backdrop" id="reschedule-modal">
+  <div class="modal">
+    <h3 id="reschedule-title">다시 수행</h3>
+    <form method="POST" id="reschedule-form">
+      <div class="form-group" style="margin-bottom:10px;">
+        <label>새 예정 시간</label>
+        <input type="datetime-local" name="scheduled_at" id="reschedule-scheduled_at" required>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn btn-cancel" onclick="closeRescheduleModal()">취소</button>
+        <button type="submit" class="btn btn-primary">활성화</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+  // 반복 주기 커스텀 토글 (등록 폼)
+  document.getElementById('recurrence_type').addEventListener('change', function () {
+    document.getElementById('custom-rule-group').style.display = this.value === 'custom' ? 'flex' : 'none'
+  })
+
+  // 수정 모달
+  function openEditModal(task) {
+    document.getElementById('edit-form').action = '/tasks/' + task.id + '/update'
+    document.getElementById('edit-title').value = task.title
+    document.getElementById('edit-content').value = task.content
+    // datetime-local은 'YYYY-MM-DDTHH:MM' 형식 필요
+    document.getElementById('edit-scheduled_at').value = task.scheduled_at.replace(' ', 'T').slice(0, 16)
+    const rt = document.getElementById('edit-recurrence_type')
+    rt.value = task.recurrence_type
+    document.getElementById('edit-recurrence_rule').value = task.recurrence_rule || ''
+    document.getElementById('edit-custom-rule-group').style.display = task.recurrence_type === 'custom' ? 'flex' : 'none'
+    document.getElementById('edit-modal').classList.add('open')
+  }
+
+  document.getElementById('edit-recurrence_type').addEventListener('change', function () {
+    document.getElementById('edit-custom-rule-group').style.display = this.value === 'custom' ? 'flex' : 'none'
+  })
+
+  function closeEditModal() {
+    document.getElementById('edit-modal').classList.remove('open')
+  }
+
+  // 다시 수행 모달
+  function openRescheduleModal(id, title) {
+    document.getElementById('reschedule-form').action = '/tasks/' + id + '/reschedule'
+    document.getElementById('reschedule-title').textContent = '다시 수행: ' + title
+    // 현재 시각 + 1시간을 기본값으로
+    const d = new Date(Date.now() + 3600000)
+    const pad = n => String(n).padStart(2, '0')
+    const defaultVal = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) +
+                       'T' + pad(d.getHours()) + ':' + pad(d.getMinutes())
+    document.getElementById('reschedule-scheduled_at').value = defaultVal
+    document.getElementById('reschedule-modal').classList.add('open')
+  }
+
+  function closeRescheduleModal() {
+    document.getElementById('reschedule-modal').classList.remove('open')
+  }
+
+  // 모달 외부 클릭으로 닫기
+  document.querySelectorAll('.modal-backdrop').forEach(el => {
+    el.addEventListener('click', function (e) {
+      if (e.target === this) this.classList.remove('open')
+    })
+  })
+</script>
+</body>
+</html>
