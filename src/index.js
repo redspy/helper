@@ -9,22 +9,31 @@ const { startScheduler } = require('./scheduler')
 const tasksRouter = require('./routes/tasks')
 const healthRouter = require('./routes/health')
 
-// 서버 재시작 시 running 상태 복구
-db.prepare(`UPDATE tasks SET status='pending' WHERE status='running'`).run()
+async function main() {
+  await db.initDb()
 
-const app = express()
+  // 서버 재시작 시 running 상태 복구
+  db.prepare(`UPDATE tasks SET status='pending' WHERE status='running'`).run()
 
-app.set('view engine', 'ejs')
-app.set('views', path.join(__dirname, 'views'))
+  const app = express()
 
-app.use(express.urlencoded({ extended: true }))
+  app.set('view engine', 'ejs')
+  app.set('views', path.join(__dirname, 'views'))
 
-app.use(healthRouter)
-app.use(tasksRouter)
+  app.use(express.urlencoded({ extended: true }))
 
-const PORT = process.env.PORT || 6240
+  app.use(healthRouter)
+  app.use(tasksRouter)
 
-app.listen(PORT, () => {
-  console.log(`[server] http://localhost:${PORT} 에서 실행 중`)
-  startScheduler(db)
+  const PORT = process.env.PORT || 6240
+
+  app.listen(PORT, () => {
+    console.log(`[server] http://localhost:${PORT} 에서 실행 중`)
+    startScheduler(db)
+  })
+}
+
+main().catch(err => {
+  console.error('[server] 시작 실패:', err)
+  process.exit(1)
 })

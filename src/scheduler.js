@@ -74,8 +74,8 @@ function startScheduler(db) {
   cron.schedule('* * * * *', async () => {
     const due = db.prepare(`
       SELECT * FROM tasks
-      WHERE status='pending' AND scheduled_at <= datetime('now','localtime')
-    `).all()
+      WHERE status='pending' AND scheduled_at <= ?
+    `).all(nowLocal())
 
     if (due.length > 0) {
       console.log(`[scheduler] 처리 대상 ${due.length}건`)
