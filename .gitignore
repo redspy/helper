@@ -5,4 +5,3 @@ data/*.db
 data/*.db-shm
 data/*.db-wal
 data/*.sqlite
-node_modules/
