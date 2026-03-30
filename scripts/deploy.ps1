@@ -36,7 +36,7 @@ if (-not (Test-Path $appDir)) {
 
 # Sync source files only (preserve node_modules to avoid OOM reinstall)
 Write-Host "[deploy] Syncing source files..."
-robocopy $env:GITHUB_WORKSPACE $appDir /E /XD node_modules .git data /XF "*.db" "*.db-shm" "*.db-wal" /NFL /NDL /NJH /NJS | Out-Null
+robocopy $env:GITHUB_WORKSPACE $appDir /E /XD .git data /XF "*.db" "*.db-shm" "*.db-wal" /NFL /NDL /NJH /NJS | Out-Null
 if ($LASTEXITCODE -ge 8) {
   throw "[deploy] robocopy failed (exit code $LASTEXITCODE)"
 }
