@@ -1,4 +1,4 @@
-# Telegram + Gemini + SQLite 할 일 자동화 서버 계획서
+# Telegram + Gemini + SQLite 할 일 자동화 기획서
 
 ## 1. 목적
 웹페이지에서 시간과 할 일을 등록/관리하고,
