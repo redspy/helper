@@ -15,13 +15,9 @@ async function main() {
     console.log('[setup] data/ 디렉토리 생성 완료')
   }
 
-  // 2. .env 파일 생성 (이미 있으면 스킵)
-  if (!fs.existsSync(envPath)) {
-    fs.copyFileSync(examplePath, envPath)
-    console.log('[setup] .env 파일 생성 완료')
-  } else {
-    console.log('[setup] .env 파일이 이미 존재합니다. 스킵.')
-  }
+  // 2. .env 파일 생성 (항상 덮어씀)
+  fs.copyFileSync(examplePath, envPath)
+  console.log('[setup] .env 파일 생성 완료')
 
   // 3. DB 초기화 (migration 자동 실행)
   process.env.TZ = 'Asia/Seoul'

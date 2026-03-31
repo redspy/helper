@@ -42,15 +42,15 @@ if ($LASTEXITCODE -ge 8) {
 }
 Write-Host "[deploy] Source sync complete"
 
-# Copy .env
-Copy-Item $envSource (Join-Path $appDir ".env") -Force
-Write-Host "[deploy] .env copied"
-
 Set-Location $appDir
 
 # Init DB (idempotent)
 Invoke-Native { npm run setup }
 Write-Host "[deploy] DB init complete"
+
+# Always overwrite .env with the one from runner root
+Copy-Item $envSource (Join-Path $appDir ".env") -Force
+Write-Host "[deploy] .env copied"
 
 # Restart server with PM2 (start if not running)
 pm2 describe helper 2>&1 | Out-Null
