@@ -52,15 +52,21 @@ Write-Host "[deploy] DB init complete"
 Copy-Item $envSource (Join-Path $appDir ".env") -Force
 Write-Host "[deploy] .env copied"
 
+# Use local pm2 to avoid broken global installation
+$pm2 = Join-Path $appDir "node_modules\pm2\bin\pm2"
+
 # Restart server with PM2 (start if not running)
-pm2 describe helper 2>&1 | Out-Null
+node $pm2 describe helper 2>&1 | Out-Null
 if ($LASTEXITCODE -eq 0) {
-  Invoke-Native { pm2 restart helper --update-env }
+  node $pm2 restart helper --update-env
+  if ($LASTEXITCODE -ne 0) { throw "pm2 restart failed" }
   Write-Host "[deploy] Server restarted"
 } else {
-  Invoke-Native { pm2 start src/index.js --name helper }
+  node $pm2 start src/index.js --name helper
+  if ($LASTEXITCODE -ne 0) { throw "pm2 start failed" }
   Write-Host "[deploy] Server started"
 }
 
-Invoke-Native { pm2 save }
+node $pm2 save
+if ($LASTEXITCODE -ne 0) { throw "pm2 save failed" }
 Write-Host "[deploy] Deploy complete"
