@@ -56,8 +56,13 @@ Write-Host "[deploy] .env copied"
 $pm2 = Join-Path $appDir "node_modules\pm2\bin\pm2"
 
 # Restart server with PM2 (start if not running)
+# Temporarily allow non-zero exit for describe (returns 1 when process doesn't exist)
+$ErrorActionPreference = "Continue"
 node $pm2 describe helper 2>&1 | Out-Null
-if ($LASTEXITCODE -eq 0) {
+$processExists = $LASTEXITCODE -eq 0
+$ErrorActionPreference = "Stop"
+
+if ($processExists) {
   node $pm2 restart helper --update-env
   if ($LASTEXITCODE -ne 0) { throw "pm2 restart failed" }
   Write-Host "[deploy] Server restarted"
