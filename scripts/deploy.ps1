@@ -56,12 +56,17 @@ Write-Host "[deploy] DB init complete"
 $pm2 = Join-Path $appDir "node_modules\pm2\bin\pm2"
 
 # Try restart first; if process doesn't exist yet, start it
-node $pm2 restart helper --update-env 2>$null
-if ($LASTEXITCODE -ne 0) {
+# SilentlyContinue is required in PS 5.1 to suppress NativeCommandError from pm2 stderr
+$ErrorActionPreference = "SilentlyContinue"
+node $pm2 restart helper --update-env 2>&1 | Out-Null
+$restartOk = ($LASTEXITCODE -eq 0)
+$ErrorActionPreference = "Stop"
+
+if ($restartOk) {
+  Write-Host "[deploy] Server restarted"
+} else {
   Invoke-Native { node $pm2 start src/index.js --name helper }
   Write-Host "[deploy] Server started"
-} else {
-  Write-Host "[deploy] Server restarted"
 }
 
 Invoke-Native { node $pm2 save }
