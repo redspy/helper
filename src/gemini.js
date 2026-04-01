@@ -9,7 +9,7 @@ function getModel() {
     if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY가 설정되지 않았습니다.')
     client = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
   }
-  return client.getGenerativeModel({ model: 'gemini-1.5-flash' })
+  return client.getGenerativeModel({ model: 'gemini-2.0-flash' })
 }
 
 const REQUIRED_SECTIONS = ['## 핵심 요약', '## 우선순위', '## 지금 바로 할 첫 행동']
