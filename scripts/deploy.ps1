@@ -62,10 +62,13 @@ node $pm2 restart helper --update-env 2>&1 | Out-Null
 $restartOk = ($LASTEXITCODE -eq 0)
 $ErrorActionPreference = "Stop"
 
+$entryPoint = Join-Path $appDir "src\index.js"
+
 if ($restartOk) {
   Write-Host "[deploy] Server restarted"
 } else {
-  Invoke-Native { node $pm2 start src/index.js --name helper }
+  node $pm2 start $entryPoint --name helper --cwd $appDir
+  if ($LASTEXITCODE -ne 0) { throw "pm2 start failed" }
   Write-Host "[deploy] Server started"
 }
 
