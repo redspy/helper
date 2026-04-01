@@ -1,15 +1,15 @@
 'use strict'
 
-const { GoogleGenerativeAI } = require('@google/generative-ai')
+const { GoogleGenAI } = require('@google/genai')
 
 let client = null
 
-function getModel() {
+function getClient() {
   if (!client) {
     if (!process.env.GEMINI_API_KEY) throw new Error('GEMINI_API_KEY가 설정되지 않았습니다.')
-    client = new GoogleGenerativeAI(process.env.GEMINI_API_KEY)
+    client = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY })
   }
-  return client.getGenerativeModel({ model: 'gemini-2.5-pro' })
+  return client
 }
 
 const REQUIRED_SECTIONS = ['## 핵심 요약', '## 우선순위', '## 지금 바로 할 첫 행동']
@@ -20,16 +20,26 @@ function validateResponse(text) {
   if (missing.length > 0) throw new Error(`Gemini 응답 형식 오류 — 누락된 섹션: ${missing.join(', ')}`)
 }
 
-async function callGemini(model, prompt) {
+async function callGemini(prompt) {
+  const ai = getClient()
   const timeoutPromise = new Promise((_, reject) =>
-    setTimeout(() => reject(new Error('Gemini API 타임아웃 (30초)')), 30000)
+    setTimeout(() => reject(new Error('Gemini API 타임아웃 (60초)')), 60000)
   )
-  const result = await Promise.race([model.generateContent(prompt), timeoutPromise])
-  return result.response.text()
+  const result = await Promise.race([
+    ai.models.generateContent({
+      model: 'gemini-2.5-flash',
+      contents: prompt,
+      config: {
+        tools: [{ googleSearch: {} }]
+      }
+    }),
+    timeoutPromise
+  ])
+  return result.text
 }
 
 async function summarize(title, content) {
-  const prompt = `당신은 생산성 코치입니다. 아래 할 일을 분석해 주세요.
+  const prompt = `당신은 생산성 코치입니다. 아래 할 일을 분석해 주세요. 필요하다면 Google 검색을 통해 최신 정보를 찾아서 내용을 보완하세요.
 
 [할 일 제목]
 ${title}
@@ -49,12 +59,11 @@ ${content}
 2.
 3.`
 
-  const model = getModel()
   let lastError
 
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const text = await callGemini(model, prompt)
+      const text = await callGemini(prompt)
       validateResponse(text)
       return text.trim()
     } catch (err) {
