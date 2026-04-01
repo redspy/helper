@@ -9,6 +9,11 @@ function nowLocal() {
   return new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }).replace('T', ' ')
 }
 
+// datetime-local 입력값 정규화: "2026-04-01T14:30" → "2026-04-01 14:30:00"
+function normalizeScheduledAt(value) {
+  return value.replace('T', ' ') + (value.length === 16 ? ':00' : '')
+}
+
 const ACTIVE_STATUSES = `'pending','running','sent','failed'`
 
 // 활성 task + 마지막 실행 결과 조회
@@ -57,7 +62,7 @@ router.post('/tasks', (req, res) => {
   `).run(
     title.trim(),
     content.trim(),
-    scheduled_at,
+    normalizeScheduledAt(scheduled_at),
     recurrence_type,
     recurrence_type === 'custom' ? (recurrence_rule || null) : null,
     now,
@@ -83,7 +88,7 @@ router.post('/tasks/:id/update', (req, res) => {
   `).run(
     title.trim(),
     content.trim(),
-    scheduled_at,
+    normalizeScheduledAt(scheduled_at),
     recurrence_type,
     recurrence_type === 'custom' ? (recurrence_rule || null) : null,
     nowLocal(),
@@ -132,7 +137,7 @@ router.post('/tasks/:id/reschedule', (req, res) => {
     UPDATE tasks
     SET status='pending', scheduled_at=?, archived_at=NULL, updated_at=?
     WHERE id=? AND status='archived'
-  `).run(scheduled_at, nowLocal(), req.params.id)
+  `).run(normalizeScheduledAt(scheduled_at), nowLocal(), req.params.id)
 
   res.redirect('/')
 })

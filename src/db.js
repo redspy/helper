@@ -5,7 +5,7 @@ const fs = require('fs')
 const initSqlJs = require('sql.js')
 
 const dbPath = path.join(__dirname, '..', 'data', 'helper.db')
-const migrationPath = path.join(__dirname, '..', 'migrations', '001_init.sql')
+const migrationsDir = path.join(__dirname, '..', 'migrations')
 
 let _sqlDb = null
 
@@ -56,8 +56,13 @@ async function initDb() {
 
   _sqlDb.run('PRAGMA foreign_keys = ON')
 
-  const migrationSql = fs.readFileSync(migrationPath, 'utf8')
-  _sqlDb.exec(migrationSql)
+  const migrationFiles = fs.readdirSync(migrationsDir)
+    .filter(f => f.endsWith('.sql'))
+    .sort()
+  for (const file of migrationFiles) {
+    const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8')
+    _sqlDb.exec(sql)
+  }
   saveToFile()
 
   return wrapper
