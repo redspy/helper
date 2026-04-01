@@ -34,7 +34,17 @@ if (-not (Test-Path $appDir)) {
   Write-Host "[deploy] Created app directory"
 }
 
-# Sync source files
+# Use local pm2
+$pm2 = Join-Path $appDir "node_modules\pm2\bin\pm2"
+
+# Step 1: Stop server before updating files
+Write-Host "[deploy] Stopping server..."
+$ErrorActionPreference = "SilentlyContinue"
+node $pm2 stop helper 2>&1 | Out-Null
+$ErrorActionPreference = "Stop"
+Write-Host "[deploy] Server stopped (or was not running)"
+
+# Step 2: Sync source files
 Write-Host "[deploy] Syncing source files..."
 robocopy $env:GITHUB_WORKSPACE $appDir /E /XD .git data /XF "*.db" "*.db-shm" "*.db-wal" /NFL /NDL /NJH /NJS | Out-Null
 if ($LASTEXITCODE -ge 8) {
@@ -48,29 +58,42 @@ Write-Host "[deploy] .env copied"
 
 Set-Location $appDir
 
-# Init DB (idempotent)
+# Step 3: Install dependencies if package.json changed
+$pkgJson    = Join-Path $appDir "package.json"
+$hashFile   = Join-Path $appDir ".pkg-hash"
+$currentHash = (Get-FileHash $pkgJson -Algorithm MD5).Hash
+
+$needsInstall = $true
+if (Test-Path $hashFile) {
+  $savedHash = Get-Content $hashFile -Raw
+  if ($savedHash.Trim() -eq $currentHash) {
+    $needsInstall = $false
+  }
+}
+
+if ($needsInstall) {
+  Write-Host "[deploy] package.json changed - running npm install..."
+  Invoke-Native { npm install --prefer-offline }
+  $currentHash | Out-File $hashFile -NoNewline
+  Write-Host "[deploy] npm install complete"
+} else {
+  Write-Host "[deploy] package.json unchanged - skipping npm install"
+}
+
+# Step 4: Init DB (idempotent)
 Invoke-Native { npm run setup }
 Write-Host "[deploy] DB init complete"
 
-# Use local pm2
-$pm2 = Join-Path $appDir "node_modules\pm2\bin\pm2"
-
-# Try restart first; if process doesn't exist yet, start it
-# SilentlyContinue is required in PS 5.1 to suppress NativeCommandError from pm2 stderr
-$ErrorActionPreference = "SilentlyContinue"
-node $pm2 restart helper --update-env 2>&1 | Out-Null
-$restartOk = ($LASTEXITCODE -eq 0)
-$ErrorActionPreference = "Stop"
-
+# Step 5: Start server
 $entryPoint = Join-Path $appDir "src\index.js"
 
-if ($restartOk) {
-  Write-Host "[deploy] Server restarted"
-} else {
-  node $pm2 start $entryPoint --name helper --cwd $appDir
-  if ($LASTEXITCODE -ne 0) { throw "pm2 start failed" }
-  Write-Host "[deploy] Server started"
-}
+$ErrorActionPreference = "SilentlyContinue"
+node $pm2 delete helper 2>&1 | Out-Null
+$ErrorActionPreference = "Stop"
+
+node $pm2 start $entryPoint --name helper --cwd $appDir
+if ($LASTEXITCODE -ne 0) { throw "pm2 start failed" }
+Write-Host "[deploy] Server started"
 
 Invoke-Native { node $pm2 save }
 Write-Host "[deploy] Deploy complete"
