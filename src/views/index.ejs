@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>할 일 자동화</title>
+  <title>AI 비서</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; }
@@ -53,7 +53,7 @@
     .error-text { color: #dc2626; font-size: .78rem; }
     .error-banner { background: #fee2e2; color: #991b1b; padding: 10px 14px; border-radius: 6px; margin-bottom: 16px; }
 
-    /* 지난 할 일 */
+    /* 지난 브리핑 */
     details summary { cursor: pointer; font-size: 1rem; font-weight: 600; color: #6b7280; padding: 4px 0; user-select: none; }
     details summary:hover { color: #374151; }
 
@@ -67,7 +67,7 @@
 </head>
 <body>
 <div class="container">
-  <h1>📋 할 일 자동화</h1>
+  <h1>🤖 AI 비서</h1>
 
   <% if (error) { %>
     <div class="error-banner"><%= error %></div>
@@ -75,12 +75,12 @@
 
   <!-- 등록 폼 -->
   <div class="card">
-    <h2>새 할 일 등록</h2>
+    <h2>새 브리핑 등록</h2>
     <form method="POST" action="/tasks">
       <div class="form-row">
         <div class="form-group" style="flex:2; min-width:200px;">
           <label>제목 *</label>
-          <input type="text" name="title" required placeholder="할 일 제목">
+          <input type="text" name="title" required placeholder="브리핑 제목">
         </div>
         <div class="form-group">
           <label>예정 시간 *</label>
@@ -103,19 +103,19 @@
       </div>
       <div class="form-row">
         <div class="form-group" style="flex:1; min-width:100%;">
-          <label>내용 *</label>
-          <textarea name="content" required placeholder="처리할 내용을 입력하세요"></textarea>
+          <label>요청 내용 *</label>
+          <textarea name="content" required placeholder="AI에게 분석하거나 검색을 요청할 내용을 입력하세요"></textarea>
         </div>
       </div>
       <button type="submit" class="btn btn-primary">등록</button>
     </form>
   </div>
 
-  <!-- 활성 할 일 목록 -->
+  <!-- 브리핑 목록 -->
   <div class="card">
-    <h2>할 일 목록</h2>
+    <h2>브리핑 목록</h2>
     <% if (tasks.length === 0) { %>
-      <p style="color:#9ca3af; font-size:.9rem;">등록된 할 일이 없습니다.</p>
+      <p style="color:#9ca3af; font-size:.9rem;">등록된 브리핑이 없습니다.</p>
     <% } else { %>
       <table>
         <thead>
@@ -124,7 +124,7 @@
             <th>예정 시간</th>
             <th>반복</th>
             <th>상태</th>
-            <th>마지막 실행</th>
+            <th>마지막 응답</th>
             <th>작업</th>
           </tr>
         </thead>
@@ -137,13 +137,13 @@
     <% } %>
   </div>
 
-  <!-- 지난 할 일 -->
+  <!-- 지난 브리핑 -->
   <div class="card">
     <details>
-      <summary>지난 할 일 (<%= archived.length %>건)</summary>
+      <summary>지난 브리핑 (<%= archived.length %>건)</summary>
       <div style="margin-top:16px;">
         <% if (archived.length === 0) { %>
-          <p style="color:#9ca3af; font-size:.9rem;">지난 할 일이 없습니다.</p>
+          <p style="color:#9ca3af; font-size:.9rem;">지난 브리핑이 없습니다.</p>
         <% } else { %>
           <table>
             <thead>
@@ -170,7 +170,7 @@
 <!-- 수정 모달 -->
 <div class="modal-backdrop" id="edit-modal">
   <div class="modal">
-    <h3>할 일 수정</h3>
+    <h3>브리핑 수정</h3>
     <form method="POST" id="edit-form">
       <div class="form-group" style="margin-bottom:10px;">
         <label>제목</label>
@@ -195,7 +195,7 @@
         <input type="text" name="recurrence_rule" id="edit-recurrence_rule">
       </div>
       <div class="form-group" style="margin-bottom:10px;">
-        <label>내용</label>
+        <label>요청 내용</label>
         <textarea name="content" id="edit-content" required></textarea>
       </div>
       <div class="modal-actions">
@@ -206,10 +206,10 @@
   </div>
 </div>
 
-<!-- 다시 수행 모달 -->
+<!-- 다시 받기 모달 -->
 <div class="modal-backdrop" id="reschedule-modal">
   <div class="modal">
-    <h3 id="reschedule-title">다시 수행</h3>
+    <h3 id="reschedule-title">다시 받기</h3>
     <form method="POST" id="reschedule-form">
       <div class="form-group" style="margin-bottom:10px;">
         <label>새 예정 시간</label>
@@ -234,7 +234,6 @@
     document.getElementById('edit-form').action = '/tasks/' + task.id + '/update'
     document.getElementById('edit-title').value = task.title
     document.getElementById('edit-content').value = task.content
-    // datetime-local은 'YYYY-MM-DDTHH:MM' 형식 필요
     document.getElementById('edit-scheduled_at').value = task.scheduled_at.replace(' ', 'T').slice(0, 16)
     const rt = document.getElementById('edit-recurrence_type')
     rt.value = task.recurrence_type
@@ -251,11 +250,10 @@
     document.getElementById('edit-modal').classList.remove('open')
   }
 
-  // 다시 수행 모달
+  // 다시 받기 모달
   function openRescheduleModal(id, title) {
     document.getElementById('reschedule-form').action = '/tasks/' + id + '/reschedule'
-    document.getElementById('reschedule-title').textContent = '다시 수행: ' + title
-    // 현재 시각 + 1시간을 기본값으로
+    document.getElementById('reschedule-title').textContent = '다시 받기: ' + title
     const d = new Date(Date.now() + 3600000)
     const pad = n => String(n).padStart(2, '0')
     const defaultVal = d.getFullYear() + '-' + pad(d.getMonth()+1) + '-' + pad(d.getDate()) +

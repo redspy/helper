@@ -1,5 +1,5 @@
 <%
-const statusLabel = { pending: '대기', running: '실행중', sent: '전송완료', failed: '실패' }
+const statusLabel = { pending: '대기', running: '처리중', sent: '전송완료', failed: '실패' }
 const statusClass = { pending: 'status-pending', running: 'status-running', sent: 'status-sent', failed: 'status-failed' }
 const recurrenceLabel = { once: '1회', daily: '매일', weekly: '매주', monthly: '매월', custom: '커스텀' }
 %>
@@ -23,8 +23,8 @@ const recurrenceLabel = { once: '1회', daily: '매일', weekly: '매주', month
     <form method="POST" action="/tasks/<%= task.id %>/delete" style="display:inline" onsubmit="return confirm('삭제하시겠습니까?')">
       <button type="submit" class="btn btn-sm btn-delete">삭제</button>
     </form>
-    <form method="POST" action="/tasks/<%= task.id %>/run" style="display:inline" onsubmit="return confirm('지금 바로 실행하시겠습니까?')">
-      <button type="submit" class="btn btn-sm btn-run" <%= task.status === 'running' ? 'disabled' : '' %>>실행</button>
+    <form method="POST" action="/tasks/<%= task.id %>/run" style="display:inline" onsubmit="return confirm('지금 바로 요청하시겠습니까?')">
+      <button type="submit" class="btn btn-sm btn-run" <%= task.status === 'running' ? 'disabled' : '' %>>요청</button>
     </form>
   </td>
 </tr>
