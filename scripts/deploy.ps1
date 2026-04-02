@@ -6,9 +6,13 @@ $ErrorActionPreference = "Stop"
 
 function Invoke-Native {
   param([scriptblock]$Command)
-  & $Command
-  if ($LASTEXITCODE -ne 0) {
-    throw "Command failed (exit code $LASTEXITCODE): $Command"
+  # Redirect stderr to stdout to prevent NativeCommandError in PS 5.1
+  $ErrorActionPreference = "SilentlyContinue"
+  & $Command 2>&1 | Write-Host
+  $exitCode = $LASTEXITCODE
+  $ErrorActionPreference = "Stop"
+  if ($exitCode -ne 0) {
+    throw "Command failed (exit code $exitCode): $Command"
   }
 }
 
@@ -34,7 +38,7 @@ if (-not (Test-Path $appDir)) {
   Write-Host "[deploy] Created app directory"
 }
 
-# Use local pm2
+# Use local pm2 (committed in node_modules)
 $pm2 = Join-Path $appDir "node_modules\pm2\bin\pm2"
 
 # Step 1: Stop server before updating files
@@ -44,7 +48,7 @@ node $pm2 stop helper 2>&1 | Out-Null
 $ErrorActionPreference = "Stop"
 Write-Host "[deploy] Server stopped (or was not running)"
 
-# Step 2: Sync source files
+# Step 2: Sync source files (node_modules committed to git, no npm install needed)
 Write-Host "[deploy] Syncing source files..."
 robocopy $env:GITHUB_WORKSPACE $appDir /E /XD .git data /XF "*.db" "*.db-shm" "*.db-wal" /NFL /NDL /NJH /NJS | Out-Null
 if ($LASTEXITCODE -ge 8) {
@@ -58,45 +62,18 @@ Write-Host "[deploy] .env copied"
 
 Set-Location $appDir
 
-# Step 3: Install dependencies if package.json changed
-$pkgJson    = Join-Path $appDir "package.json"
-$hashFile   = Join-Path $appDir ".pkg-hash"
-$currentHash = (Get-FileHash $pkgJson -Algorithm MD5).Hash
-
-$needsInstall = $true
-if (Test-Path $hashFile) {
-  $savedHash = Get-Content $hashFile -Raw
-  if ($savedHash.Trim() -eq $currentHash) {
-    $needsInstall = $false
-  }
-}
-
-if ($needsInstall) {
-  Write-Host "[deploy] package.json changed - running npm install..."
-  Invoke-Native { npm install --prefer-offline }
-  $currentHash | Out-File $hashFile -NoNewline
-  Write-Host "[deploy] npm install complete"
-} else {
-  Write-Host "[deploy] package.json unchanged - skipping npm install"
-}
-
-# Step 4: Init DB (idempotent)
+# Step 3: Init DB (idempotent migrations)
 Invoke-Native { npm run setup }
 Write-Host "[deploy] DB init complete"
 
-# Step 5: Start server
+# Step 4: Start server
 $entryPoint = Join-Path $appDir "src\index.js"
 
-# pm2 commands write to stderr even on success — must use SilentlyContinue throughout
 $ErrorActionPreference = "SilentlyContinue"
-
 node $pm2 delete helper 2>&1 | Out-Null
-
 node $pm2 start $entryPoint --name helper --cwd $appDir 2>&1 | ForEach-Object { Write-Host "[pm2] $_" }
 $startOk = ($LASTEXITCODE -eq 0)
-
 node $pm2 save 2>&1 | Out-Null
-
 $ErrorActionPreference = "Stop"
 
 if (-not $startOk) { throw "[deploy] pm2 start failed" }
