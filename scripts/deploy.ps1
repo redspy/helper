@@ -66,8 +66,8 @@ Set-Location $appDir
 Invoke-Native { npm run setup }
 Write-Host "[deploy] DB init complete"
 
-# Step 4: Start server via start.bat
-$entryPoint = Join-Path $appDir "start.bat"
+# Step 4: Start server
+$entryPoint = Join-Path $appDir "src\index.js"
 
 $ErrorActionPreference = "SilentlyContinue"
 node $pm2 delete helper 2>&1 | Out-Null
