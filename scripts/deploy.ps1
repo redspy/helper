@@ -87,13 +87,18 @@ Write-Host "[deploy] DB init complete"
 # Step 5: Start server
 $entryPoint = Join-Path $appDir "src\index.js"
 
+# pm2 commands write to stderr even on success — must use SilentlyContinue throughout
 $ErrorActionPreference = "SilentlyContinue"
+
 node $pm2 delete helper 2>&1 | Out-Null
+
+node $pm2 start $entryPoint --name helper --cwd $appDir 2>&1 | ForEach-Object { Write-Host "[pm2] $_" }
+$startOk = ($LASTEXITCODE -eq 0)
+
+node $pm2 save 2>&1 | Out-Null
+
 $ErrorActionPreference = "Stop"
 
-node $pm2 start $entryPoint --name helper --cwd $appDir
-if ($LASTEXITCODE -ne 0) { throw "pm2 start failed" }
+if (-not $startOk) { throw "[deploy] pm2 start failed" }
 Write-Host "[deploy] Server started"
-
-Invoke-Native { node $pm2 save }
 Write-Host "[deploy] Deploy complete"
