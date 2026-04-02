@@ -37,6 +37,8 @@ async function callGemini(prompt) {
 async function summarize(title, content) {
   const prompt = `당신은 유능한 AI 어시스턴트입니다. 아래 할 일 또는 주제에 대해 분석하고, 필요하다면 Google 검색을 통해 최신 정보를 찾아서 도움이 되는 내용을 자유롭게 응답해 주세요.
 
+응답 시 마크다운 문법(*, **, #, -, ``` 등)을 사용하지 말고, 일반 텍스트로만 작성해 주세요.
+
 [제목]
 ${title}
 
