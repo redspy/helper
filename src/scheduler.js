@@ -46,27 +46,40 @@ async function processTask(task, db) {
 
     if (task.recurrence_type === 'once') {
       db.prepare(`
-        UPDATE tasks SET status='archived', archived_at=?, last_run_at=?, updated_at=? WHERE id=?
+        UPDATE tasks SET status='archived', retry_count=0, archived_at=?, last_run_at=?, updated_at=? WHERE id=?
       `).run(finishedAt, finishedAt, finishedAt, task.id)
     } else {
       const nextAt = nextScheduledAt(task)
       db.prepare(`
-        UPDATE tasks SET status='pending', scheduled_at=?, last_run_at=?, updated_at=? WHERE id=?
+        UPDATE tasks SET status='pending', retry_count=0, scheduled_at=?, last_run_at=?, updated_at=? WHERE id=?
       `).run(nextAt, finishedAt, finishedAt, task.id)
     }
 
     console.log(`[${traceId}] task ${task.id} 처리 완료`)
   } catch (err) {
     const finishedAt = nowLocal()
-    console.error(`[${traceId}] task ${task.id} 처리 실패:`, err.message)
+    const retryCount = (task.retry_count || 0) + 1
+    console.error(`[${traceId}] task ${task.id} 처리 실패 (${retryCount}/5):`, err.message)
 
     db.prepare(`
       UPDATE task_runs SET finished_at=?, status='failed', error_message=? WHERE id=?
     `).run(finishedAt, err.message, runId)
 
-    db.prepare(`
-      UPDATE tasks SET status='failed', last_run_at=?, updated_at=? WHERE id=?
-    `).run(finishedAt, finishedAt, task.id)
+    if (retryCount < 5) {
+      // 1분 후 재시도
+      const retryAt = new Date(Date.now() + 60000)
+        .toLocaleString('sv-SE', { timeZone: 'Asia/Seoul' }).replace('T', ' ')
+      db.prepare(`
+        UPDATE tasks SET status='pending', scheduled_at=?, retry_count=?, last_run_at=?, updated_at=? WHERE id=?
+      `).run(retryAt, retryCount, finishedAt, finishedAt, task.id)
+      console.log(`[${traceId}] task ${task.id} 1분 후 재시도 예정 (${retryCount}/5)`)
+    } else {
+      // 5회 모두 실패 시 failed 확정, retry_count 초기화
+      db.prepare(`
+        UPDATE tasks SET status='failed', retry_count=0, last_run_at=?, updated_at=? WHERE id=?
+      `).run(finishedAt, finishedAt, task.id)
+      console.error(`[${traceId}] task ${task.id} 최대 재시도 초과 — failed 확정`)
+    }
   }
 }
 
