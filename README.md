@@ -32,22 +32,18 @@
 git clone https://github.com/redspy/helper.git
 cd helper
 
-# 의존성 설치 + DB 초기화 + .env 파일 자동 생성
+# 의존성 설치
+npm install
+
+# DB 초기화 + .env 파일 자동 생성
 npm run setup
 ```
 
 `npm run setup` 한 번으로 아래가 자동 처리됩니다.
 
-- `node_modules/` 의존성 설치 (`npm install` 선행 필요)
 - `data/helper.db` SQLite 데이터베이스 생성
-- `.env` 파일 생성 (키 이름만 있고 값은 비어있는 상태)
-
-> ⚠️ `npm run setup` 실행 전에 반드시 `npm install`을 먼저 실행하세요.
->
-> ```bash
-> npm install
-> npm run setup
-> ```
+- `.env` 파일이 없으면 생성 (키 이름만 있고 값은 비어있는 상태)
+- `.env` 파일이 이미 있으면 덮어쓰지 않고 유지
 
 ---
 
@@ -67,8 +63,7 @@ npm run setup
 
 ### 3-3. 주의사항
 
-- API 키는 한 번만 표시됩니다. 복사 후 바로 `.env`에 저장하세요.
-- 무료 할당량: 분당 15회, 일 1,500회 요청 (2025년 기준)
+- API 키는 한 번만 표시될 수 있으니 복사 후 바로 `.env`에 저장하세요.
 
 ---
 
@@ -166,6 +161,7 @@ npm run dev
 ### 할 일 등록
 
 1. 브라우저에서 서버 주소 접속 후 `APP_PASSWORD`에 지정된 비밀번호로 로그인
+   - `APP_PASSWORD`를 비워두면 기본값 `13579` 사용
 2. 웹페이지 상단 폼에 **제목**, **내용**, **예정 시간**, **반복 주기** 입력
 3. **등록** 버튼 클릭
 
@@ -179,7 +175,8 @@ npm run dev
 1. 서버가 1분마다 예정 시간이 된 할 일을 확인
 2. Gemini(`gemini-2.5-flash`)가 원문 내용을 분석하고 Google 검색을 통해 최신 정보를 포함하여 자유롭게 정리
 3. 텔레그램으로 결과 전송
-4. 실패 시 최대 3회 재시도 (Gemini, Telegram 각각)
+4. Gemini/Telegram 호출은 각각 최대 3회 재시도
+5. 작업 단위 실패는 1분 간격으로 최대 5회까지 자동 재시도 후 `failed` 처리
 
 ### 지난 할 일 재수행
 

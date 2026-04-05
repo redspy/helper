@@ -29,10 +29,12 @@ helper/
 │   ├── telegram.js           # Telegram Bot API 전송 모듈
 │   ├── recurrence.js         # 반복 규칙 → 다음 실행시간 계산
 │   ├── routes/
+│   │   ├── auth.js           # 로그인/로그아웃 라우터
 │   │   ├── tasks.js          # /tasks 라우터
 │   │   └── health.js         # /health 라우터
 │   └── views/
 │       ├── index.ejs         # 메인 화면 (등록 폼 + 활성 목록 + 지난 할 일)
+│       ├── login.ejs         # 로그인 화면
 │       └── partials/
 │           ├── task-row.ejs  # 활성 할 일 행
 │           └── archive-row.ejs # 지난 할 일 행
@@ -92,9 +94,11 @@ TELEGRAM_CHAT_ID=
 # 서버
 PORT=6240
 TZ=Asia/Seoul
-SESSION_SECRET=helper-secret-key
-APP_PASSWORD=13579
+SESSION_SECRET=
+APP_PASSWORD=
 ```
+
+`SESSION_SECRET`, `APP_PASSWORD`를 비워두면 서버 기본값(`helper-secret-key`, `13579`)이 사용됩니다.
 
 `.gitignore` 필수 항목:
 ```
@@ -117,6 +121,7 @@ CREATE TABLE IF NOT EXISTS tasks (
   recurrence_type TEXT    NOT NULL DEFAULT 'once',  -- once|daily|weekly|monthly|custom
   recurrence_rule TEXT,                      -- custom일 때 cron 표현식 저장
   status          TEXT    NOT NULL DEFAULT 'pending', -- pending|running|sent|failed|archived
+  retry_count     INTEGER NOT NULL DEFAULT 0,
   last_run_at     TEXT,
   archived_at     TEXT,
   created_at      TEXT    NOT NULL DEFAULT (datetime('now','localtime')),
@@ -129,7 +134,7 @@ CREATE TABLE IF NOT EXISTS task_runs (
   trace_id            TEXT    NOT NULL,       -- UUID, 로그 추적용
   started_at          TEXT    NOT NULL,
   finished_at         TEXT,
-  status              TEXT    NOT NULL,       -- success|failed
+  status              TEXT    NOT NULL,       -- running|success|failed
   gemini_result       TEXT,
   telegram_message_id TEXT,
   error_message       TEXT
@@ -137,6 +142,11 @@ CREATE TABLE IF NOT EXISTS task_runs (
 
 CREATE INDEX IF NOT EXISTS idx_tasks_status_scheduled
   ON tasks(status, scheduled_at);
+
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  name TEXT PRIMARY KEY,
+  applied_at TEXT NOT NULL
+);
 ```
 
 ---
@@ -147,7 +157,9 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status_scheduled
 
 ```
 - sql.js를 사용하여 in-memory 데이터베이스 초기화 및 data/helper.db 파일로 동기화(백업)
-- 앱 시작 시 migrations/001_init.sql 자동 실행 (IF NOT EXISTS 이므로 멱등)
+- 앱 시작 시 migrations/*.sql 자동 실행
+- schema_migrations 테이블로 적용 이력 관리 (이미 적용된 파일은 스킵)
+- legacy DB에서 중복 컬럼 오류가 발생하면 해당 마이그레이션은 적용 완료로 간주하고 이력 기록
 - db 인스턴스를 싱글턴으로 export, saveToFile()을 통해 파일 기록 유지
 - Proxy 객체로 better-sqlite3와 유사한 API (run, prepare 등) 래핑 제공
 - PRAGMA foreign_keys=ON; 적용
@@ -179,20 +191,20 @@ export async function summarize(title, content): Promise<string>
 ### `src/telegram.js`
 
 ```
-export async function sendMessage(text): Promise<string>  // message_id 반환
+export async function sendMessage(title, scheduledAt, geminiResult, processedAt): Promise<string>  // message_id 반환
 
 - TelegramBot 초기화 (TELEGRAM_BOT_TOKEN, {polling: false})
 - TELEGRAM_CHAT_ID로 sendMessage
 - 실패 시 최대 3회 재시도 (1초 간격)
 - 3회 모두 실패 시 throw Error
 - 메시지 포맷:
-    📋 *{title}*
+    📋 {title}
     🕐 예정: {scheduled_at}
 
     {gemini_result}
 
     ✅ 처리 시각: {processed_at}
-- parse_mode: 'Markdown'
+- parse_mode: 'HTML' (Gemini 응답 특수문자 이스케이프 후 전송)
 ```
 
 ### `src/recurrence.js`
@@ -226,10 +238,12 @@ export function startScheduler(db)
   4. trace_id(UUID) 생성 후 task_runs INSERT
   5. gemini.summarize() 호출
   6. telegram.sendMessage() 호출
-  7. 성공: task_runs UPDATE(status=success), tasks UPDATE(status=sent or archived)
-  8. 실패: task_runs UPDATE(status=failed, error_message), tasks UPDATE(status=failed)
-  9. 반복 task: nextScheduledAt() 계산 후 tasks UPDATE(status=pending, scheduled_at=next)
-  10. 1회성 task: tasks UPDATE(status=archived, archived_at=now())
+  7. 성공: task_runs UPDATE(status=success)
+     - 1회성 task: tasks UPDATE(status=archived, archived_at=now(), retry_count=0)
+     - 반복 task: nextScheduledAt() 계산 후 tasks UPDATE(status=pending, scheduled_at=next, retry_count=0)
+  8. 실패: task_runs UPDATE(status=failed, error_message), tasks retry_count 증가
+  9. retry_count < 5 이면 1분 뒤 재시도(pending + scheduled_at 갱신)
+  10. retry_count >= 5 이면 tasks status='failed' 확정 후 retry_count 초기화
 
 - crypto.randomUUID() 사용 (Node.js 내장, 추가 패키지 불필요)
 ```
@@ -319,8 +333,8 @@ document.querySelector('[name=recurrence_type]')
 ```javascript
 // 실행 순서:
 // 1. data/ 디렉토리 생성 (없으면)
-// 2. .env 파일 생성 (.env.example 복사, 이미 있으면 스킵)
-// 3. better-sqlite3로 data/helper.db 연결 후 001_init.sql 실행
+// 2. .env 파일 생성 (.env.example 복사, 이미 있으면 유지)
+// 3. sql.js DB 초기화 및 migrations/*.sql 적용
 // 4. 완료 메시지 출력 (.env 편집 안내 포함)
 
 const fs = require('fs')
@@ -330,7 +344,7 @@ const envPath = path.join(__dirname, '..', '.env')
 const examplePath = path.join(__dirname, '..', '.env.example')
 const dataDir = path.join(__dirname, '..', 'data')
 
-if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir)
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true })
 if (!fs.existsSync(envPath)) fs.copyFileSync(examplePath, envPath)
 
 // DB 초기화는 db.js import로 자동 처리
