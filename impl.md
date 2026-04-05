@@ -6,12 +6,13 @@
 |------|------|------|
 | 런타임 | Node.js (v20+) | 스케줄러, I/O 비동기 처리에 최적 |
 | 웹 프레임워크 | Express 4 | 단순 구조에 과도한 추상 불필요 |
-| DB | better-sqlite3 | 동기 API로 스케줄러 코드 단순화 |
+| DB | sql.js | 인메모리 SQLite DB를 파일 백업으로 사용 |
 | 스케줄러 | node-cron | cron 표현식 기반 1분 폴링 |
 | 템플릿 | EJS | 서버사이드 렌더링, 빌드 불필요 |
-| Gemini | @google/generative-ai | 공식 SDK |
+| Gemini | @google/genai | 최신 Google GenAI SDK |
 | Telegram | node-telegram-bot-api | Bot API 래퍼 |
 | 환경변수 | dotenv | .env 로드 |
+| 인증 | express-session | 웹 페이지 보호를 위한 세션 |
 | 로깅 | 직접 구현 (console + DB) | 외부 의존 최소화 |
 
 ---
@@ -62,13 +63,16 @@ helper/
     "dev": "node --watch src/index.js"
   },
   "dependencies": {
-    "@google/generative-ai": "^0.21.0",
-    "better-sqlite3": "^9.4.3",
+    "@google/genai": "^1.48.0",
+    "cron-parser": "^4.9.0",
     "dotenv": "^16.4.5",
     "ejs": "^3.1.10",
     "express": "^4.19.2",
+    "express-session": "^1.19.0",
     "node-cron": "^3.0.3",
-    "node-telegram-bot-api": "^0.66.0"
+    "node-telegram-bot-api": "^0.66.0",
+    "pm2": "^6.0.14",
+    "sql.js": "^1.12.0"
   }
 }
 ```
@@ -88,6 +92,8 @@ TELEGRAM_CHAT_ID=
 # 서버
 PORT=6240
 TZ=Asia/Seoul
+SESSION_SECRET=helper-secret-key
+APP_PASSWORD=13579
 ```
 
 `.gitignore` 필수 항목:
@@ -140,10 +146,10 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status_scheduled
 ### `src/db.js`
 
 ```
-- better-sqlite3로 data/helper.db 연결
+- sql.js를 사용하여 in-memory 데이터베이스 초기화 및 data/helper.db 파일로 동기화(백업)
 - 앱 시작 시 migrations/001_init.sql 자동 실행 (IF NOT EXISTS 이므로 멱등)
-- db 인스턴스를 싱글턴으로 export
-- PRAGMA journal_mode=WAL; 적용 (읽기/쓰기 동시성)
+- db 인스턴스를 싱글턴으로 export, saveToFile()을 통해 파일 기록 유지
+- Proxy 객체로 better-sqlite3와 유사한 API (run, prepare 등) 래핑 제공
 - PRAGMA foreign_keys=ON; 적용
 ```
 
@@ -152,31 +158,22 @@ CREATE INDEX IF NOT EXISTS idx_tasks_status_scheduled
 ```
 export async function summarize(title, content): Promise<string>
 
-- GoogleGenerativeAI 초기화 (GEMINI_API_KEY)
-- 모델: gemini-1.5-flash (빠르고 저렴)
+- @google/genai 초기화 (GEMINI_API_KEY)
+- 모델: gemini-2.5-flash
+- tools 옵션으로 googleSearch 포함 (최신 정보 검색 기능 활성화)
 - 프롬프트 템플릿:
-    당신은 생산성 코치입니다. 아래 할 일을 분석해 주세요.
+    당신은 유능한 AI 어시스턴트입니다. 아래 할 일 또는 주제에 대해 분석하고, 필요하다면 Google 검색을 통해 최신 정보를 찾아서 도움이 되는 내용을 자유롭게 응답해 주세요.
+    응답 시 마크다운 문법을 사용하지 말고, 일반 텍스트로만 작성해 주세요.
 
-    [할 일 제목]
+    [제목]
     {title}
 
-    [원문 내용]
+    [내용]
     {content}
 
-    다음 형식으로 정리해 주세요:
-    ## 핵심 요약
-    (2~3줄)
-
-    ## 우선순위
-    상 / 중 / 하 중 하나 + 이유 한 줄
-
-    ## 지금 바로 할 첫 행동
-    1.
-    2.
-    3.
-
 - 응답이 비어있거나 에러면 throw Error
-- 타임아웃: 30초 (AbortSignal.timeout(30000))
+- 타임아웃: 60초 제한 (Promise.race)
+- 최대 3회 재시도 (실패 시 1초 간격)
 ```
 
 ### `src/telegram.js`
@@ -243,6 +240,7 @@ export function startScheduler(db)
 GET  /                      → index.ejs 렌더링
                               - query: 활성 tasks (status IN ('pending','running','sent','failed'))
                               - archived: tasks WHERE status='archived' (접힘 섹션용)
+                              (세션 미들웨어로 인증 필요)
 
 POST /tasks                 → 할 일 등록
                               body: { title, content, scheduled_at, recurrence_type, recurrence_rule? }
@@ -267,6 +265,10 @@ POST /tasks/:id/reschedule  → 지난 1회성 할 일 재활성화
                               성공 후 redirect('/')
 
 GET  /health                → { status: 'ok', time: now }
+
+GET  /login                 → 로그인 화면 렌더링 (session.authenticated 인 경우 / 로 리다이렉트)
+POST /login                 → APP_PASSWORD 확인 후 session에 인증 정보 부여
+POST /logout                → 세션 소멸 및 로그인 화면 렌더링
 ```
 
 ---
